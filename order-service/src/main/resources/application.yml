@@ -1,0 +1,90 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-service
+  profiles:
+    # Used when no profile is given. Switch with SPRING_PROFILES_ACTIVE=unprotected
+    default: protected
+
+# ---------------------------------------------------------------------------
+# Inventory Service connection - IDENTICAL for both profiles (fair comparison)
+# ---------------------------------------------------------------------------
+inventory:
+  base-url: ${INVENTORY_BASE_URL:http://localhost:8081}
+  connect-timeout: 1s
+  read-timeout: 3s        # SLOW mode takes 2s, so it still succeeds
+
+# ---------------------------------------------------------------------------
+# Resilience4j - only used by ProtectedInventoryClient (profile "protected").
+# The instance name "inventory" matches the name in the annotations.
+# ---------------------------------------------------------------------------
+resilience4j:
+
+  # ---------- RATE LIMITER ----------
+  ratelimiter:
+    rate-limiter-aspect-order: 1          # LOWEST number = OUTERMOST (Spring @Order rule): checked FIRST
+    instances:
+      inventory:
+        limit-for-period: 10              # 10 permits ...
+        limit-refresh-period: 1s          # ... per second
+        timeout-duration: 0               # do not wait for a permit: reject immediately (-> 429)
+        register-health-indicator: true
+
+  # ---------- RETRY ----------
+  retry:
+    retry-aspect-order: 2                 # inside the rate limiter, outside the circuit breaker
+    instances:
+      inventory:
+        max-attempts: 3                   # 1 original call + 2 retries
+        wait-duration: 500ms              # pause between attempts
+        retry-exceptions:                 # transient failures worth retrying
+          - org.springframework.web.client.HttpServerErrorException   # HTTP 5xx
+          - org.springframework.web.client.ResourceAccessException    # timeout / connection refused
+        ignore-exceptions:                # never retry these
+          - io.github.resilience4j.ratelimiter.RequestNotPermitted
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+
+  # ---------- CIRCUIT BREAKER ----------
+  circuitbreaker:
+    circuit-breaker-aspect-order: 3       # highest number = innermost: wraps the actual HTTP call
+    instances:
+      inventory:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10           # look at the last 10 calls
+        minimum-number-of-calls: 5        # need at least 5 calls before calculating the failure rate
+        failure-rate-threshold: 50        # OPEN when >= 50% of them failed
+        wait-duration-in-open-state: 10s  # stay OPEN for 10s (fail fast, inventory gets a break)
+        permitted-number-of-calls-in-half-open-state: 3   # then let 3 test calls through
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:                # these count as failures
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+        register-health-indicator: true
+
+# ---------------------------------------------------------------------------
+# Actuator - inspect Resilience4j state at runtime
+#   http://localhost:8080/actuator/circuitbreakers
+#   http://localhost:8080/actuator/circuitbreakerevents
+#   http://localhost:8080/actuator/retryevents
+#   http://localhost:8080/actuator/ratelimiters
+#   http://localhost:8080/actuator/health
+# ---------------------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,circuitbreakers,circuitbreakerevents,retries,retryevents,ratelimiters,ratelimiterevents
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+    ratelimiters:
+      enabled: true
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%-20.20thread] %-28.28logger{0} : %msg%n"

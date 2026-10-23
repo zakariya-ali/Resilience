@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Root "aggregator" POM. It only groups the two microservices so you can build both with one command:
+      mvn clean package
+  Each service is a normal, standalone Spring Boot project with its own pom.xml.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>resilience-demo</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>resilience-demo</name>
+
+    <modules>
+        <module>inventory-service</module>
+        <module>order-service</module>
+    </modules>
+</project>

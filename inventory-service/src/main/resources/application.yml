@@ -1,0 +1,22 @@
+server:
+  port: 8081
+  tomcat:
+    threads:
+      # Deliberately small so the dependency has LIMITED CAPACITY, like a real
+      # struggling service. Under heavy load extra requests have to queue.
+      max: 20
+
+spring:
+  application:
+    name: inventory-service
+
+# Default behaviour when no ?mode= query parameter is sent: NORMAL | SLOW | FAILURE | RANDOM
+# Override with env var INVENTORY_MODE=FAILURE or --inventory.mode=FAILURE
+inventory:
+  mode: ${INVENTORY_MODE:NORMAL}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
