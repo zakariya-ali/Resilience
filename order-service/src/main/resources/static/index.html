@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Order — PNG upload</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; max-width: 560px; margin: 12vh auto; padding: 0 1rem; color: #18212b; }
+    main { border: 1px solid #d7dee7; border-radius: 12px; padding: 2rem; }
+    input, button { font: inherit; margin-top: 1rem; }
+    button { display: block; padding: .65rem 1rem; border: 0; border-radius: 6px; background: #155eef; color: white; cursor: pointer; }
+    #result { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Upload a PNG</h1>
+  <p>Select a PNG image to submit to Order.</p>
+  <form id="upload-form">
+    <input type="file" name="image" accept="image/png,.png" required>
+    <button type="submit">Upload image</button>
+  </form>
+  <p id="result" role="status" aria-live="polite"></p>
+  <p id="download"></p>
+</main>
+<script>
+  const form = document.querySelector('#upload-form');
+  const result = document.querySelector('#result');
+  const download = document.querySelector('#download');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    result.textContent = 'Uploading…';
+    try {
+      const response = await fetch('/api/images', { method: 'POST', body: new FormData(form) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message || 'Upload failed.');
+      result.textContent = `${body.message}\nJob ID: ${body.id}\nStatus: ${body.status}`;
+      download.replaceChildren();
+      pollForResult(body.id);
+    } catch (error) {
+      result.textContent = error.message;
+    }
+  });
+
+  async function pollForResult(id) {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        const response = await fetch(`/api/images/${id}`);
+        if (!response.ok) continue;
+        const status = await response.json();
+        result.textContent = `${status.message}\nJob ID: ${id}\nStatus: ${status.status}`;
+        if (status.status === 'COMPLETED') {
+          const link = document.createElement('a');
+          link.href = `/api/images/${id}/jpeg`;
+          link.textContent = 'Download JPEG';
+          download.replaceChildren(link);
+          return;
+        }
+      } catch (_) { /* Retry briefly if Order is busy. */ }
+    }
+    result.textContent += '\nStill processing. Check again later.';
+  }
+</script>
+</body>
+</html>

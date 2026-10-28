@@ -1,33 +1,23 @@
-# Start both services:            docker compose up --build
-# Start Order Service unprotected: ORDER_PROFILE=unprotected docker compose up --build
 services:
-  inventory-service:
-    build: ./inventory-service
+  broker:
+    image: apache/kafka:latest
+    hostname: Ibraheem
+    container_name: ImageConverter
     ports:
-      - "8081:8081"
+      - 9092:9092
     environment:
-      INVENTORY_MODE: NORMAL          # default behaviour; requests can override with ?mode=
-
-  order-service:
-    build: ./order-service
-    ports:
-      - "8080:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: ${ORDER_PROFILE:-protected}   # protected | unprotected
-      INVENTORY_BASE_URL: http://inventory-service:8081
-    depends_on:
-      - inventory-service
-
-  # Optional: run k6 without installing it locally, e.g.
-  #   docker compose run --rm k6 run /scripts/normal-traffic.js
-  # Only started on demand (profile "loadtest").
-  k6:
-    image: grafana/k6:0.54.0
-    profiles: ["loadtest"]
-    volumes:
-      - ./k6:/scripts
-    environment:
-      BASE_URL: http://order-service:8080
-      INVENTORY_URL: http://inventory-service:8081
-    depends_on:
-      - order-service
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
+      KAFKA_LISTENERS: PLAINTEXT://broker:29092,CONTROLLER://broker:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk

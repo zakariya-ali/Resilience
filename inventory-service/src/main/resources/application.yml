@@ -9,11 +9,24 @@ server:
 spring:
   application:
     name: inventory-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: inventory-image-converter
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      properties:
+        max.partition.fetch.bytes: 10485760
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      properties:
+        max.request.size: 10485760
 
-# Default behaviour when no ?mode= query parameter is sent: NORMAL | SLOW | FAILURE | RANDOM
-# Override with env var INVENTORY_MODE=FAILURE or --inventory.mode=FAILURE
 inventory:
-  mode: ${INVENTORY_MODE:NORMAL}
+  image-input-topic: image-uploaded
+  image-output-topic: image-converted
 
 management:
   endpoints:
