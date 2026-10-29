@@ -1,6 +1,6 @@
 services:
-  broker:
-    image: apache/kafka:latest
+  kafka:
+    image: apache/kafka:3.9.1
     hostname: Ibraheem
     container_name: ImageConverter
     ports:
@@ -8,16 +8,94 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_NODE_ID: 1
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
-      KAFKA_LISTENERS: PLAINTEXT://broker:29092,CONTROLLER://broker:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_MESSAGE_MAX_BYTES: 10485760
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:29092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
+
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.5.0
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: connect
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Kafka Connect (distributed mode) using the Kafka image's own Connect runtime.
+  # The FileStream connectors ship in /opt/kafka/libs but are not on the plugin path by default,
+  # so they are copied into a dedicated plugin directory on startup.
+  kafka-connect:
+    image: apache/kafka:3.9.1
+    container_name: kafka-connect
+    ports:
+      - "8083:8083"
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /tmp/connect-plugins/file && cp /opt/kafka/libs/connect-file-*.jar /tmp/connect-plugins/file/
+        cat > /tmp/connect-distributed.properties <<'EOF'
+        bootstrap.servers=kafka:29092
+        group.id=connect-cluster
+        key.converter=org.apache.kafka.connect.storage.StringConverter
+        value.converter=org.apache.kafka.connect.storage.StringConverter
+        config.storage.topic=connect-configs
+        offset.storage.topic=connect-offsets
+        status.storage.topic=connect-status
+        config.storage.replication.factor=1
+        offset.storage.replication.factor=1
+        status.storage.replication.factor=1
+        listeners=http://0.0.0.0:8083
+        rest.advertised.host.name=kafka-connect
+        plugin.path=/tmp/connect-plugins
+        EOF
+        mkdir -p /data
+        exec /opt/kafka/bin/connect-distributed.sh /tmp/connect-distributed.properties
+    volumes:
+      - ./connect/data:/data
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # One-shot job that registers the connectors in ./connect/connectors once Connect's REST API is up.
+  kafka-connect-init:
+    image: curlimages/curl:8.10.1
+    volumes:
+      - ./connect/connectors:/connectors:ro
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until curl -sf http://kafka-connect:8083/connectors > /dev/null; do echo "waiting for Kafka Connect..."; sleep 5; done
+        for file in /connectors/*.json; do
+          name=$$(basename "$$file" .json)
+          echo "registering $$name"
+          curl -sf -X PUT -H "Content-Type: application/json" --data @"$$file" "http://kafka-connect:8083/connectors/$$name/config"
+          echo
+        done
+    depends_on:
+      - kafka-connect
+    restart: "no"

@@ -36,3 +36,7 @@ build/
 .vscode/
 .metals/
 .bloop/
+
+# Kafka Connect FileStreamSink output
+connect/data/*
+!connect/data/.gitkeep

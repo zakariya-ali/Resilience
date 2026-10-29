@@ -23,10 +23,17 @@ spring:
       value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
       properties:
         max.request.size: 10485760
+    streams:
+      application-id: inventory-image-stats
+      properties:
+        producer.max.request.size: 10485760
+        consumer.max.partition.fetch.bytes: 10485760
 
 inventory:
   image-input-topic: image-uploaded
   image-output-topic: image-converted
+  image-audit-topic: image-audit
+  image-count-topic: image-conversion-count
 
 management:
   endpoints:
