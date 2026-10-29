@@ -4,6 +4,13 @@ server:
 spring:
   application:
     name: order-service
+  datasource:
+    url: ${ORDER_DB_URL:jdbc:postgresql://localhost:5432/orders}
+    username: ${ORDER_DB_USER:orders}
+    password: ${ORDER_DB_PASSWORD:orders}
+  sql:
+    init:
+      mode: always
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:

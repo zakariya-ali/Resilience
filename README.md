@@ -16,3 +16,15 @@ count of conversions to `image-conversion-count`.
 
 **Kafka Connect**: the `image-audit-file-sink` connector (FileStreamSink) copies `image-audit` into
 `connect/data/image-audit.log` on the host.
+
+## Debezium (change data capture)
+
+`order-service` stores one row per image upload in Postgres (`image_jobs`: id, status, png/jpeg sizes,
+timestamps). The row is inserted as `QUEUED` on upload and updated to `COMPLETED` when the JPEG arrives.
+
+The `image-jobs-postgres-source` Debezium connector (in `connect/connectors/`) reads Postgres' change log
+and publishes every insert/update to the `orders-db.public.image_jobs` topic as JSON
+(`{"before": ..., "after": ..., "op": "c" | "u", ...}`). Kafka Connect now runs on the Debezium image,
+which also still runs the FileStream sink above.
+
+Postgres runs on `localhost:5432` (db/user/password: `orders`). order-service needs it running.

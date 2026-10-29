@@ -43,40 +43,53 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Kafka Connect (distributed mode) using the Kafka image's own Connect runtime.
-  # The FileStream connectors ship in /opt/kafka/libs but are not on the plugin path by default,
-  # so they are copied into a dedicated plugin directory on startup.
+  # Postgres for order-service's image_jobs table. wal_level=logical lets Debezium read the change log.
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: orders
+    command: ["postgres", "-c", "wal_level=logical"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d orders"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Kafka Connect (distributed mode) using Debezium's image, which ships the Debezium Postgres connector.
+  # The FileStream connectors are in /kafka/libs but not on the plugin path by default,
+  # so they are copied into the plugin directory on startup.
   kafka-connect:
-    image: apache/kafka:3.9.1
+    image: quay.io/debezium/connect:2.7.3.Final
     container_name: kafka-connect
     ports:
       - "8083:8083"
-    command:
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      ADVERTISED_HOST_NAME: kafka-connect
+      GROUP_ID: connect-cluster
+      CONFIG_STORAGE_TOPIC: connect-configs
+      OFFSET_STORAGE_TOPIC: connect-offsets
+      STATUS_STORAGE_TOPIC: connect-status
+      KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+    entrypoint:
       - sh
       - -c
       - |
-        mkdir -p /tmp/connect-plugins/file && cp /opt/kafka/libs/connect-file-*.jar /tmp/connect-plugins/file/
-        cat > /tmp/connect-distributed.properties <<'EOF'
-        bootstrap.servers=kafka:29092
-        group.id=connect-cluster
-        key.converter=org.apache.kafka.connect.storage.StringConverter
-        value.converter=org.apache.kafka.connect.storage.StringConverter
-        config.storage.topic=connect-configs
-        offset.storage.topic=connect-offsets
-        status.storage.topic=connect-status
-        config.storage.replication.factor=1
-        offset.storage.replication.factor=1
-        status.storage.replication.factor=1
-        listeners=http://0.0.0.0:8083
-        rest.advertised.host.name=kafka-connect
-        plugin.path=/tmp/connect-plugins
-        EOF
-        mkdir -p /data
-        exec /opt/kafka/bin/connect-distributed.sh /tmp/connect-distributed.properties
+        mkdir -p /kafka/connect/file && cp /kafka/libs/connect-file-*.jar /kafka/connect/file/
+        exec /docker-entrypoint.sh start
     volumes:
       - ./connect/data:/data
     depends_on:
       kafka:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 

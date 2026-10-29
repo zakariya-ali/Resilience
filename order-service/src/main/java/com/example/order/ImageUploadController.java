@@ -28,13 +28,16 @@ public class ImageUploadController {
     private final Path uploadDirectory;
     private final KafkaTemplate<String, byte[]> kafkaTemplate;
     private final String imageTopic;
+    private final ImageJobRepository imageJobs;
 
     public ImageUploadController(@Value("${order.upload-directory:uploads}") String uploadDirectory,
                                  @Value("${order.image-topic:image-uploaded}") String imageTopic,
-                                 KafkaTemplate<String, byte[]> kafkaTemplate) {
+                                 KafkaTemplate<String, byte[]> kafkaTemplate,
+                                 ImageJobRepository imageJobs) {
         this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
         this.imageTopic = imageTopic;
         this.kafkaTemplate = kafkaTemplate;
+        this.imageJobs = imageJobs;
     }
 
     @PostMapping(path = "/api/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -53,8 +56,10 @@ public class ImageUploadController {
             }
 
             Files.createDirectories(uploadDirectory);
-            String id = UUID.randomUUID().toString();
+            UUID jobId = UUID.randomUUID();
+            String id = jobId.toString();
             Files.write(uploadDirectory.resolve(id + ".png"), content);
+            imageJobs.queued(jobId, content.length);
             kafkaTemplate.send(imageTopic, id, content).get(10, TimeUnit.SECONDS);
             return new UploadResponse(id, "QUEUED", "PNG uploaded and sent to Kafka for conversion.");
         } catch (InterruptedException e) {

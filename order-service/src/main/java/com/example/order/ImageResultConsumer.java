@@ -13,9 +13,12 @@ import java.util.UUID;
 @Component
 public class ImageResultConsumer {
     private final Path uploadDirectory;
+    private final ImageJobRepository imageJobs;
 
-    public ImageResultConsumer(@Value("${order.upload-directory:uploads}") String uploadDirectory) {
+    public ImageResultConsumer(@Value("${order.upload-directory:uploads}") String uploadDirectory,
+                               ImageJobRepository imageJobs) {
         this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
+        this.imageJobs = imageJobs;
     }
 
     @KafkaListener(topics = "${order.image-result-topic:image-converted}", groupId = "order-image-results")
@@ -23,12 +26,13 @@ public class ImageResultConsumer {
         String id = record.key();
         byte[] jpeg = record.value();
         try {
-            UUID.fromString(id);
+            UUID jobId = UUID.fromString(id);
             if (jpeg == null || jpeg.length == 0) {
                 throw new IllegalArgumentException("Converted image record is empty.");
             }
             Files.createDirectories(uploadDirectory);
             Files.write(uploadDirectory.resolve(id + ".jpg"), jpeg);
+            imageJobs.completed(jobId, jpeg.length);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Converted image record has an invalid ID or payload.", e);
         } catch (IOException e) {

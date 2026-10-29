@@ -2,5 +2,7 @@
   "connector.class": "org.apache.kafka.connect.file.FileStreamSinkConnector",
   "tasks.max": "1",
   "topics": "image-audit",
-  "file": "/data/image-audit.log"
+  "file": "/data/image-audit.log",
+  "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+  "value.converter": "org.apache.kafka.connect.storage.StringConverter"
 }
